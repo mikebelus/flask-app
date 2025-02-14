@@ -147,8 +147,15 @@ git push origin main
 # Check for files in local directory that are not in the repository (tracked or untracked)
 echo "Generating report of local files not in either repository..."
 
-# Get all files in the local directory that are not tracked by git, excluding .git and venv directories
-local_files_not_in_repo=$(find . -type f -not -path './.git/*' -not -path './venv/*' -not -name "*.sh" -not -name "*.py" -not -name "*.pem")
+# Get all files in the local directory that are not tracked by git, excluding .git, venv, __pycache__, and .pytest_cache directories
+local_files_not_in_repo=$(find . -type f \
+    -not -path './.git/*' \
+    -not -path './venv/*' \
+    -not -path './__pycache__/*' \
+    -not -path './.pytest_cache/*' \
+    -not -name "*.sh" \
+    -not -name "*.py" \
+    -not -name "*.pem")
 
 # Files tracked by git (both local and remote)
 tracked_files=$(git ls-files)
