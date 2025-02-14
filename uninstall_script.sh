@@ -144,4 +144,31 @@ git add .
 git commit -m "Cleanup script: removed AWS resources and synced repo"
 git push origin main
 
+# Generate a report of file differences between local and remote
+echo "Generating report of local vs remote files..."
+git fetch origin main
+
+# Files in local but not in remote
+local_only=$(git ls-files --others --exclude-standard)
+# Files in remote but not in local
+remote_only=$(git diff --name-only origin/main)
+
+# Print results
+echo "==== File Difference Report ===="
+echo "Files in local but NOT in remote:"
+if [[ -z "$local_only" ]]; then
+    echo "None"
+else
+    echo "$local_only"
+fi
+
+echo ""
+echo "Files in remote but NOT in local:"
+if [[ -z "$remote_only" ]]; then
+    echo "None"
+else
+    echo "$remote_only"
+fi
+echo "================================"
+
 echo "AWS cleanup complete!"
