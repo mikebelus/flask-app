@@ -144,30 +144,24 @@ git add .
 git commit -m "Cleanup script: removed AWS resources and synced repo"
 git push origin main
 
-# Generate a report of file differences between local and remote
-echo "Generating report of local vs remote files..."
-git fetch origin main
+# Check for files in local directory that are not in the repository (tracked or untracked)
+echo "Generating report of local files not in either repository..."
 
-# Files in local but not in remote
-local_only=$(git ls-files --others --exclude-standard)
-# Files in remote but not in local
-remote_only=$(git diff --name-only origin/main)
+# Get all files in the local directory that are not tracked by git
+local_files_not_in_repo=$(find . -type f -not -path './.git/*' -not -name "*.sh" -not -name "*.py" -not -name "*.pem")
 
-# Print results
-echo "==== File Difference Report ===="
-echo "Files in local but NOT in remote:"
-if [[ -z "$local_only" ]]; then
-    echo "None"
+# Files tracked by git (both local and remote)
+tracked_files=$(git ls-files)
+
+# Filter out the files that are tracked
+untracked_local_files=$(comm -23 <(echo "$local_files_not_in_repo" | sort) <(echo "$tracked_files" | sort))
+
+# Print the results
+echo "==== Local files not in either repository ===="
+if [[ -z "$untracked_local_files" ]]; then
+    echo "No untracked local files found."
 else
-    echo "$local_only"
-fi
-
-echo ""
-echo "Files in remote but NOT in local:"
-if [[ -z "$remote_only" ]]; then
-    echo "None"
-else
-    echo "$remote_only"
+    echo "$untracked_local_files"
 fi
 echo "================================"
 
