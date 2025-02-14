@@ -144,18 +144,15 @@ git add .
 git commit -m "Cleanup script: removed AWS resources and synced repo"
 git push origin main
 
-# Check for files in local directory that are not in the repository (tracked or untracked)
+# Check for files in local directory that are not in either repository (tracked or untracked)
 echo "Generating report of local files not in either repository..."
 
-# Get all files in the local directory that are not tracked by git, excluding .git, venv, __pycache__, and .pytest_cache directories
+# Find all files, excluding venv, __pycache__, .pytest_cache, and .git directories recursively
 local_files_not_in_repo=$(find . -type f \
     -not -path './.git/*' \
     -not -path './venv/*' \
-    -not -path './__pycache__/*' \
-    -not -path './.pytest_cache/*' \
-    -not -name "*.sh" \
-    -not -name "*.py" \
-    -not -name "*.pem")
+    -not -path '*/__pycache__/*' \
+    -not -path '*/.pytest_cache/*')
 
 # Files tracked by git (both local and remote)
 tracked_files=$(git ls-files)
