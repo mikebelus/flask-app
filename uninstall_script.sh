@@ -162,10 +162,12 @@ untracked_local_files=$(comm -23 <(echo "$local_files_not_in_repo" | sort) <(ech
 
 # Print the results
 echo "==== Local files not in either repository ===="
-if [[ -z "$untracked_local_files" ]]; then
+untracked_files=$(git ls-files --others --exclude-standard)
+
+if [[ -z "$untracked_files" ]]; then
     echo "No untracked local files found."
 else
-    echo "$untracked_local_files"
+    echo "$untracked_files"
 fi
 echo "================================"
 
