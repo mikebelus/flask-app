@@ -72,14 +72,15 @@ create_key_pair() {
 }
 
 
-print_log "VPC ID being passed to create_security_group: $vpc_id"
 
 # Create or retrieve security group
 create_security_group() {
   local vpc_id
   # Ensure that the VPC ID is correctly passed to the create_security_group function
   vpc_id=$(create_vpc)  # Assign the result of create_vpc to vpc_id
-  print_log "Checking for existing security group..."
+  print_log "VPC ID being passed to create_security_group: $vpc_id"
+  
+print_log "Checking for existing security group..."
   local group_id
   group_id=$(aws ec2 describe-security-groups --region "$AWS_REGION" \
     --filters "Name=vpc-id,Values=$vpc_id" "Name=group-name,Values=$SECURITY_GROUP_NAME" \
