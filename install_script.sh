@@ -85,8 +85,8 @@ create_security_group() {
     --filters "Name=vpc-id,Values=$vpc_id" "Name=group-name,Values=$SECURITY_GROUP_NAME" \
     --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)
 
- # if [[ -z "$group_id" ]]; then
-#    print_log "Creating security group '$SECURITY_GROUP_NAME' in VPC $vpc_id..."
+  if [[ -z "$group_id" ]]; then
+    print_log "Creating security group '$SECURITY_GROUP_NAME' in VPC $vpc_id..."
 #    group_id=$(aws ec2 create-security-group --region "$AWS_REGION" \
 #      --group-name "$SECURITY_GROUP_NAME" --description "Flask security group" \
 #      --vpc-id "$vpc_id" --query 'GroupId' --output text) || { print_log "[ERROR] Failed to create security group."; exit 1; }
@@ -96,7 +96,7 @@ create_security_group() {
 #    aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$group_id" --protocol tcp --port 80 --cidr "0.0.0.0/0" || { print_log "[ERROR] Failed to configure HTTP access."; exit 1; }
 #  else
 #    print_log "Security group '$SECURITY_GROUP_NAME' already exists with ID: $group_id."
-#  fi
+  fi
 
 #  echo "$group_id"
 }
