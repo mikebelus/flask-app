@@ -14,9 +14,7 @@ delete_vpc_resources() {
     if [[ -n "$INSTANCE_IDS" ]]; then
         echo "Terminating EC2 instances: $INSTANCE_IDS"
         aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_IDS
-        sleep 10  # Wait for termination
-    else
-        echo "No EC2 instances found in VPC: $VPC_ID"
+        sleep 10  # Allow instances to terminate
     fi
 
     # Delete Security Groups (except default)
@@ -33,13 +31,6 @@ delete_vpc_resources() {
         aws ec2 delete-subnet --region $REGION --subnet-id $SUBNET_ID
     done
 
-    # Delete Route Tables (except main)
-    RT_IDS=$(aws ec2 describe-route-tables --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[?Associations[0].Main==\`false\`].RouteTableId" --output text)
-    for RT_ID in $RT_IDS; do
-        echo "Deleting Route Table: $RT_ID"
-        aws ec2 delete-route-table --region $REGION --route-table-id $RT_ID
-    done
-
     # Delete NAT Gateways
     NAT_GW_IDS=$(aws ec2 describe-nat-gateways --region $REGION --filter "Name=vpc-id,Values=$VPC_ID" --query "NatGateways[*].NatGatewayId" --output text)
     for NAT_GW_ID in $NAT_GW_IDS; do
@@ -54,6 +45,13 @@ delete_vpc_resources() {
         echo "Detaching and deleting Internet Gateway: $IGW_ID"
         aws ec2 detach-internet-gateway --region $REGION --internet-gateway-id $IGW_ID --vpc-id $VPC_ID
         aws ec2 delete-internet-gateway --region $REGION --internet-gateway-id $IGW_ID
+    done
+
+    # Delete Route Tables (EXCEPT main)
+    RT_IDS=$(aws ec2 describe-route-tables --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[?Associations[0].Main==\`false\`].RouteTableId" --output text)
+    for RT_ID in $RT_IDS; do
+        echo "Deleting Route Table: $RT_ID"
+        aws ec2 delete-route-table --region $REGION --route-table-id $RT_ID
     done
 
     # Delete the VPC
@@ -83,7 +81,7 @@ INSTANCE_IDS=$(aws ec2 describe-instances --region $REGION --query "Reservations
 if [[ -n "$INSTANCE_IDS" ]]; then
     echo "Terminating EC2 instances: $INSTANCE_IDS"
     aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_IDS
-    sleep 10  # Allow termination
+    sleep 10
 fi
 
 # Delete Key Pairs
@@ -123,13 +121,12 @@ echo "Fetching AWS cost and usage..."
 Start=$(date -v1d +%Y-%m-%d)  # macOS-compatible date command
 End=$(date +%Y-%m-%d)
 
-# Get actual costs
 aws ce get-cost-and-usage --time-period Start=$Start,End=$End --granularity MONTHLY --metrics "UnblendedCost"
 
-# Fetch AWS cost forecast for the rest of the month
+# Fetch AWS cost forecast
 echo "Fetching AWS cost forecast..."
-ForecastStart=$(date +%Y-%m-%d)  # Today’s date
-ForecastEnd=$(date -v+1m -v1d +%Y-%m-%d)  # First day of next month
+ForecastStart=$(date +%Y-%m-%d)
+ForecastEnd=$(date -v+1m -v1d +%Y-%m-%d)
 
 aws ce get-cost-forecast --time-period Start=$ForecastStart,End=$ForecastEnd --metric "UNBLENDED_COST" --granularity MONTHLY
 
@@ -144,26 +141,9 @@ git add .
 git commit -m "Cleanup script: removed AWS resources and synced repo"
 git push origin main
 
-# Check for files in local directory that are not in either repository (tracked or untracked)
-echo "Generating report of local files not in either repository..."
-
-# Find all files, excluding venv, __pycache__, .pytest_cache, and .git directories recursively
-local_files_not_in_repo=$(find . -type f \
-    -not -path './.git/*' \
-    -not -path './venv/*' \
-    -not -path '*/__pycache__/*' \
-    -not -path '*/.pytest_cache/*')
-
-# Files tracked by git (both local and remote)
-tracked_files=$(git ls-files)
-
-# Filter out the files that are tracked
-untracked_local_files=$(comm -23 <(echo "$local_files_not_in_repo" | sort) <(echo "$tracked_files" | sort))
-
-# Print the results
+# Check for files not tracked in Git
 echo "==== Local files not in either repository ===="
 untracked_files=$(git ls-files --others --exclude-standard)
-
 if [[ -z "$untracked_files" ]]; then
     echo "No untracked local files found."
 else
