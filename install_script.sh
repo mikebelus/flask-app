@@ -78,27 +78,27 @@ print_log "VPC ID being passed to create_security_group: $vpc_id"
 
 # Create or retrieve security group
 create_security_group() {
-  local vpc_id=$1
-  print_log "Checking for existing security group..."
-  local group_id
-  group_id=$(aws ec2 describe-security-groups --region "$AWS_REGION" \
-    --filters "Name=vpc-id,Values=$vpc_id" "Name=group-name,Values=$SECURITY_GROUP_NAME" \
-    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)
+#  local vpc_id=$1
+#  print_log "Checking for existing security group..."
+#  local group_id
+#  group_id=$(aws ec2 describe-security-groups --region "$AWS_REGION" \
+#    --filters "Name=vpc-id,Values=$vpc_id" "Name=group-name,Values=$SECURITY_GROUP_NAME" \
+#    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)
 
-  if [[ -z "$group_id" ]]; then
-    print_log "Creating security group '$SECURITY_GROUP_NAME' in VPC $vpc_id..."
-    group_id=$(aws ec2 create-security-group --region "$AWS_REGION" \
-      --group-name "$SECURITY_GROUP_NAME" --description "Flask security group" \
-      --vpc-id "$vpc_id" --query 'GroupId' --output text) || { print_log "[ERROR] Failed to create security group."; exit 1; }
+ # if [[ -z "$group_id" ]]; then
+#    print_log "Creating security group '$SECURITY_GROUP_NAME' in VPC $vpc_id..."
+#    group_id=$(aws ec2 create-security-group --region "$AWS_REGION" \
+#      --group-name "$SECURITY_GROUP_NAME" --description "Flask security group" \
+#      --vpc-id "$vpc_id" --query 'GroupId' --output text) || { print_log "[ERROR] Failed to create security group."; exit 1; }
 
-    print_log "Configuring security group rules..."
-    aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$group_id" --protocol tcp --port 22 --cidr "$YOUR_IP" || { print_log "[ERROR] Failed to configure SSH access."; exit 1; }
-    aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$group_id" --protocol tcp --port 80 --cidr "0.0.0.0/0" || { print_log "[ERROR] Failed to configure HTTP access."; exit 1; }
-  else
-    print_log "Security group '$SECURITY_GROUP_NAME' already exists with ID: $group_id."
-  fi
+#    print_log "Configuring security group rules..."
+#    aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$group_id" --protocol tcp --port 22 --cidr "$YOUR_IP" || { print_log "[ERROR] Failed to configure SSH access."; exit 1; }
+#    aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$group_id" --protocol tcp --port 80 --cidr "0.0.0.0/0" || { print_log "[ERROR] Failed to configure HTTP access."; exit 1; }
+#  else
+#    print_log "Security group '$SECURITY_GROUP_NAME' already exists with ID: $group_id."
+#  fi
 
-  echo "$group_id"
+#  echo "$group_id"
 }
 
 # Launch EC2 instance
