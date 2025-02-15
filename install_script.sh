@@ -103,6 +103,8 @@ if [ ! -f flask-app.zip ]; then
   exit 1
 fi
 
+# Sleep for a few seconds before starting the SSH session
+sleep 10
 
 # Securely copy the Flask app to EC2 (Suppress SSH host verification prompt)
 scp -i ${KEY_NAME}.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null flask-app.zip ec2-user@$PUBLIC_IP:/home/ec2-user/
