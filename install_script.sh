@@ -35,7 +35,7 @@ create_vpc() {
     --query 'Vpc.VpcId' --output text) || { print_log "[ERROR] Failed to create VPC."; exit 1; }
 
   # Ensure VPC ID is clean and without any surrounding characters
-  vpc_id=$(echo "$vpc_id" | tr -d '"')
+  #vpc_id=$(echo "$vpc_id" | tr -d '"')
 
   print_log "VPC created successfully with ID: $vpc_id"
   echo "$vpc_id"
@@ -80,7 +80,7 @@ create_security_group() {
   vpc_id=$(create_vpc)  # Assign the result of create_vpc to vpc_id
   print_log "VPC ID being passed to create_security_group: $vpc_id"
   
-print_log "Checking for existing security group..."
+  print_log "Checking for existing security group..."
   local group_id
   group_id=$(aws ec2 describe-security-groups --region "$AWS_REGION" \
     --filters "Name=vpc-id,Values=$vpc_id" "Name=group-name,Values=$SECURITY_GROUP_NAME" \
