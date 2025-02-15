@@ -30,7 +30,7 @@ print_log "Detected public IP: $YOUR_IP"
 # Create VPC
 create_vpc() {
   print_log "Creating a new VPC..."
-  #global vpc_id
+  local vpc_id
   vpc_id=$(aws ec2 create-vpc --region "$AWS_REGION" --cidr-block "10.0.0.0/16" \
     --query 'Vpc.VpcId' --output text) || { print_log "[ERROR] Failed to create VPC."; exit 1; }
 
@@ -71,14 +71,14 @@ create_key_pair() {
   fi
 }
 
-# Ensure that the VPC ID is correctly passed to the create_security_group function
-vpc_id=$(create_vpc)  # Assign the result of create_vpc to vpc_id
 
 print_log "VPC ID being passed to create_security_group: $vpc_id"
 
 # Create or retrieve security group
 create_security_group() {
-  local vpc_id=$1
+  local vpc_id
+  # Ensure that the VPC ID is correctly passed to the create_security_group function
+  vpc_id=$(create_vpc)  # Assign the result of create_vpc to vpc_id
   print_log "Checking for existing security group..."
   local group_id
   group_id=$(aws ec2 describe-security-groups --region "$AWS_REGION" \
@@ -213,7 +213,7 @@ cleanup() {
 }
 
 # Main execution flow
-vpc_id=$(create_vpc)
+#vpc_id=$(create_vpc)
 ami_id=$(get_ami_id)
 create_key_pair
 security_group_id=$(create_security_group "$vpc_id")
