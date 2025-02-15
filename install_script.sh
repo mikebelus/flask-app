@@ -216,7 +216,7 @@ cleanup() {
 vpc_id=$(create_vpc)
 ami_id=$(get_ami_id)
 create_key_pair
-#security_group_id=$(create_security_group "$vpc_id")
+security_group_id=$(create_security_group "$vpc_id")
 #instance_id=$(launch_instance "$ami_id" "$security_group_id")
 #wait_for_instance "$instance_id"
 #public_ip=$(get_public_ip "$instance_id")
