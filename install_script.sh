@@ -116,7 +116,7 @@ ssh -i ${KEY_NAME}.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/nu
     sudo yum install -y python3 python3-pip
 
     # Install Flask and Gunicorn in the background to avoid blocking
-    sudo nohup pip3 install flask gunicorn > install.log 2>&1 &
+    sudo pip3 install flask gunicorn
 
     # Start gunicorn in the background with nohup
     nohup gunicorn app:app --bind 0.0.0.0:5000 &
