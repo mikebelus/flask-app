@@ -214,15 +214,15 @@ cleanup() {
 
 # Main execution flow
 vpc_id=$(create_vpc)
-ami_id=$(get_ami_id)
-create_key_pair
-security_group_id=$(create_security_group "$vpc_id")
-instance_id=$(launch_instance "$ami_id" "$security_group_id")
-wait_for_instance "$instance_id"
-public_ip=$(get_public_ip "$instance_id")
-deploy_flask "$public_ip"
+#ami_id=$(get_ami_id)
+#create_key_pair
+#security_group_id=$(create_security_group "$vpc_id")
+#instance_id=$(launch_instance "$ami_id" "$security_group_id")
+#wait_for_instance "$instance_id"
+#public_ip=$(get_public_ip "$instance_id")
+#deploy_flask "$public_ip"
 
-print_log "Flask app deployed successfully at http://$public_ip"
+#print_log "Flask app deployed successfully at http://$public_ip"
 
 # Uncomment the following line to clean up resources after deployment
 # cleanup "$instance_id" "$security_group_id" "$vpc_id"
