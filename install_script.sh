@@ -1,4 +1,4 @@
-Refine script? #!/bin/bash
+#!/bin/bash
 set -e
 
 # Set variables
@@ -10,7 +10,7 @@ SUBNET_NAME="flask-subnet"
 INSTANCE_TYPE="t2.micro"
 IAM_ROLE="flask-app-role"  # Replace with your IAM role if needed
 REPOSITORY_URL="https://github.com/mikebelus/flask-app.git"
-YOUR_IP="YOUR_IP/32"  # Replace with your actual IP for SSH access
+YOUR_IP=$(curl -s https://checkip.amazonaws.com)/32
 
 # Logging function
 log() {
