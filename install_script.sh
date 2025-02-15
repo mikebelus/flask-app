@@ -1,85 +1,217 @@
 #!/bin/bash
+set -euo pipefail  # Enable strict error handling
 
 # Set variables
 AWS_REGION="us-east-1"
 KEY_PAIR_NAME="my-key"
 SECURITY_GROUP_NAME="flask-security-group"
-VPC_NAME="flask-vpc"
-SUBNET_NAME="flask-subnet"
 INSTANCE_TYPE="t2.micro"
-REPOSITORY_URL="https://github.com/yourusername/flask-app.git"  # Replace with your GitHub repo URL
+IAM_ROLE=""  # Set to an IAM role if needed
+REPOSITORY_URL="https://github.com/mikebelus/flask-app.git"
 
-# Get the latest Amazon Linux 2 AMI ID for the region
-echo "Getting the latest Amazon Linux 2 AMI ID..."
-AMI_ID=$(aws ec2 describe-images \
-  --region $AWS_REGION \
-  --filters "Name=name,Values=amzn2-ami-hvm-*-x86_64-gp2" \
-  --owners amazon \
-  --query "Images | sort_by(@, &CreationDate) | [-1].ImageId" \
-  --output text)
-echo "Using AMI ID: $AMI_ID"
+# Dynamically fetch your public IP address
+YOUR_IP=$(curl -s https://ipinfo.io/ip)/32
 
-# Create a new key pair
-echo "Creating key pair..."
-aws ec2 create-key-pair --region $AWS_REGION --key-name $KEY_PAIR_NAME --query 'KeyMaterial' --output text > $KEY_PAIR_NAME.pem
-chmod 400 $KEY_PAIR_NAME.pem
+# Ensure YOUR_IP is set correctly
+if [[ -z "$YOUR_IP" || "$YOUR_IP" == "/32" ]]; then
+  echo "[ERROR] Failed to fetch your public IP address."
+  exit 1
+fi
 
-# Create a VPC
-echo "Creating VPC..."
-VPC_ID=$(aws ec2 create-vpc --region $AWS_REGION --cidr-block "10.0.0.0/16" --query 'Vpc.VpcId' --output text)
-aws ec2 create-tags --resources $VPC_ID --tags Key=Name,Value=$VPC_NAME
-echo "VPC ID: $VPC_ID"
+# Log function for standardized logging
+log() {
+  echo "[INFO] $(date +'%Y-%m-%d %H:%M:%S') - $1"
+}
 
-# Create a subnet in the VPC
-echo "Creating subnet..."
-SUBNET_ID=$(aws ec2 create-subnet --region $AWS_REGION --vpc-id $VPC_ID --cidr-block "10.0.1.0/24" --query 'Subnet.SubnetId' --output text)
-echo "Subnet ID: $SUBNET_ID"
+# Fetch latest Amazon Linux 2 AMI ID
+get_ami_id() {
+  log "Fetching the latest Amazon Linux 2 AMI ID..."
+  local ami_id
+  ami_id=$(aws ec2 describe-images --region "$AWS_REGION" \
+    --filters "Name=name,Values=amzn2-ami-hvm-*-x86_64-gp2" \
+    --owners amazon \
+    --query "Images | sort_by(@, &CreationDate) | [-1].ImageId" --output text)
 
-# Create a security group
-echo "Creating security group..."
-SECURITY_GROUP_ID=$(aws ec2 create-security-group --region $AWS_REGION --group-name $SECURITY_GROUP_NAME --description "Security group for Flask app" --vpc-id $VPC_ID --query 'GroupId' --output text)
-aws ec2 authorize-security-group-ingress --region $AWS_REGION --group-id $SECURITY_GROUP_ID --protocol tcp --port 22 --cidr 0.0.0.0/0
-aws ec2 authorize-security-group-ingress --region $AWS_REGION --group-id $SECURITY_GROUP_ID --protocol tcp --port 80 --cidr 0.0.0.0/0
-echo "Security group ID: $SECURITY_GROUP_ID"
+  if [[ -z "$ami_id" ]]; then
+    log "[ERROR] Failed to fetch the Amazon Linux 2 AMI ID."
+    exit 1
+  fi
+
+  echo "$ami_id"
+}
+
+# Create key pair if it does not exist
+create_key_pair() {
+  log "Checking if key pair '$KEY_PAIR_NAME' exists..."
+  if aws ec2 describe-key-pairs --region "$AWS_REGION" --key-names "$KEY_PAIR_NAME" &>/dev/null; then
+    log "Key pair '$KEY_PAIR_NAME' already exists, skipping creation."
+  else
+    log "Creating key pair '$KEY_PAIR_NAME'..."
+    aws ec2 create-key-pair --region "$AWS_REGION" --key-name "$KEY_PAIR_NAME" \
+      --query 'KeyMaterial' --output text > "$KEY_PAIR_NAME.pem" || { log "[ERROR] Failed to create key pair."; exit 1; }
+    chmod 400 "$KEY_PAIR_NAME.pem"
+  fi
+}
+
+# Create or retrieve security group
+create_security_group() {
+  log "Checking for existing security group..."
+  local group_id
+  group_id=$(aws ec2 describe-security-groups --region "$AWS_REGION" \
+    --group-names "$SECURITY_GROUP_NAME" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)
+
+  if [[ -z "$group_id" ]]; then
+    log "No existing security group found. Fetching default VPC..."
+    local vpc_id
+    vpc_id=$(aws ec2 describe-vpcs --region "$AWS_REGION" --filters "Name=isDefault,Values=true" \
+      --query "Vpcs[0].VpcId" --output text)
+
+    if [[ -z "$vpc_id" ]]; then
+      log "[ERROR] No default VPC found in the region $AWS_REGION."
+      exit 1
+    fi
+
+    log "Creating security group '$SECURITY_GROUP_NAME' in VPC $vpc_id..."
+    group_id=$(aws ec2 create-security-group --region "$AWS_REGION" \
+      --group-name "$SECURITY_GROUP_NAME" --description "Flask security group" \
+      --vpc-id "$vpc_id" --query 'GroupId' --output text) || { log "[ERROR] Failed to create security group."; exit 1; }
+
+    log "Configuring security group rules..."
+    aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$group_id" --protocol tcp --port 22 --cidr "$YOUR_IP" || { log "[ERROR] Failed to configure SSH access."; exit 1; }
+    aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$group_id" --protocol tcp --port 80 --cidr "0.0.0.0/0" || { log "[ERROR] Failed to configure HTTP access."; exit 1; }
+  else
+    log "Security group '$SECURITY_GROUP_NAME' already exists with ID: $group_id."
+  fi
+
+  echo "$group_id"
+}
 
 # Launch EC2 instance
-echo "Launching EC2 instance..."
+launch_instance() {
+  local ami_id=$1
+  local security_group_id=$2
 
-INSTANCE_ID=$(aws ec2 run-instances --region $AWS_REGION --image-id $AMI_ID --count 1 --instance-type $INSTANCE_TYPE --key-name $KEY_PAIR_NAME --security-group-ids $SECURITY_GROUP_ID --subnet-id $SUBNET_ID --associate-public-ip-address --query 'Instances[0].InstanceId' --output text)
+  log "Launching EC2 instance with AMI: $ami_id and security group: $security_group_id..."
+  local instance_id
+  instance_id=$(aws ec2 run-instances --region "$AWS_REGION" --image-id "$ami_id" --count 1 --instance-type "$INSTANCE_TYPE" \
+    --key-name "$KEY_PAIR_NAME" --security-group-ids "$security_group_id" --associate-public-ip-address \
+    --query 'Instances[0].InstanceId' --output text) || { log "[ERROR] Failed to launch EC2 instance."; exit 1; }
 
-echo "Instance ID: $INSTANCE_ID"
+  echo "$instance_id"
+}
 
-# Wait for the instance to be in 'running' state
-echo "Waiting for instance to be running..."
-aws ec2 wait instance-running --region $AWS_REGION --instance-ids $INSTANCE_ID
+# Wait for EC2 instance to start
+wait_for_instance() {
+  local instance_id=$1
+  log "Waiting for EC2 instance $instance_id to be running..."
+  aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids "$instance_id" || { log "[ERROR] Failed to wait for EC2 instance to run."; exit 1; }
+}
 
-# Get the public IP of the EC2 instance
-PUBLIC_IP=$(aws ec2 describe-instances --region $AWS_REGION --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
-echo "EC2 instance is running. Public IP: $PUBLIC_IP"
+# Get EC2 instance public IP
+get_public_ip() {
+  local instance_id=$1
+  local public_ip
+  public_ip=$(aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$instance_id" \
+    --query 'Reservations[0].Instances[0].PublicIpAddress' --output text) || { log "[ERROR] Failed to fetch public IP."; exit 1; }
 
-# SSH into the EC2 instance and set up the Flask app
-echo "Setting up Flask app on EC2..."
-ssh -o StrictHostKeyChecking=no -i $KEY_PAIR_NAME.pem ec2-user@$PUBLIC_IP << 'EOF'
-    # Update the system
+  if [[ -z "$public_ip" ]]; then
+    log "[ERROR] Failed to fetch public IP for instance $instance_id."
+    exit 1
+  fi
+
+  echo "$public_ip"
+}
+
+# Deploy Flask app on EC2 instance
+deploy_flask() {
+  log "Deploying Flask app on EC2 instance..."
+  local public_ip=$1
+  ssh -T -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 -i "$KEY_PAIR_NAME.pem" ec2-user@"$public_ip" << EOF
+    set -e
     sudo yum update -y
+    sudo yum install -y python3 python3-pip gcc git firewalld
+    sudo systemctl enable --now firewalld
+    sudo firewall-cmd --permanent --add-service=http
+    sudo firewall-cmd --permanent --add-service=https
+    sudo firewall-cmd --reload
 
-    # Install Python and pip
-    sudo yum install python3 -y
-    sudo yum install git -y
+    sudo useradd -m -s /bin/bash flaskuser
+    sudo -u flaskuser bash -c "
+      cd ~;
+      git clone $REPOSITORY_URL flask-app;
+      cd flask-app;
+      python3 -m venv venv;
+      source venv/bin/activate;
+      pip install --upgrade pip;
+      pip install flask gunicorn;
+      deactivate;
+    "
 
-    # Install necessary Python packages
-    python3 -m pip install --upgrade pip
-    pip3 install flask gunicorn
+    sudo tee /etc/systemd/system/flask.service > /dev/null << SERVICE
+[Unit]
+Description=Gunicorn instance to serve Flask app
+After=network.target
 
-    # Clone the Flask app repository
-    git clone https://github.com/yourusername/flask-app.git
+[Service]
+User=flaskuser
+Group=flaskuser
+WorkingDirectory=/home/flaskuser/flask-app
+ExecStart=/home/flaskuser/flask-app/venv/bin/gunicorn -w 4 -b 0.0.0.0:80 wsgi:app
+Restart=always
 
-    # Navigate to the app directory
-    cd flask-app
+[Install]
+WantedBy=multi-user.target
+SERVICE
 
-    # Run Gunicorn to start the Flask app
-    gunicorn -w 4 -b 0.0.0.0:80 wsgi:app
+    sudo chown -R flaskuser:flaskuser /home/flaskuser/flask-app
+    sudo systemctl daemon-reload
+    sudo systemctl enable flask
+    sudo systemctl restart flask
 EOF
+}
 
-# Done
-echo "Flask app is running at http://$PUBLIC_IP"
+# Cleanup AWS resources
+cleanup() {
+  local instance_id=$1
+  local security_group_id=$2
+
+  log "Terminating EC2 instance $instance_id..."
+  aws ec2 terminate-instances --region "$AWS_REGION" --instance-ids "$instance_id"
+  aws ec2 wait instance-terminated --region "$AWS_REGION" --instance-ids "$instance_id" || { log "[ERROR] Failed to terminate EC2 instance."; exit 1; }
+
+  log "Deleting key pair..."
+  aws ec2 delete-key-pair --region "$AWS_REGION" --key-name "$KEY_PAIR_NAME"
+  rm -f "$KEY_PAIR_NAME.pem"
+
+  log "Checking if security group is still in use..."
+  if ! aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=instance.group-id,Values=$security_group_id" \
+    --query "Reservations[*].Instances[*].InstanceId" --output text | grep .; then
+    log "Deleting security group..."
+    aws ec2 delete-security-group --region "$AWS_REGION" --group-id "$security_group_id" || log "Security group in use, skipping deletion."
+  else
+    log "Security group is still in use, skipping deletion."
+  fi
+}
+
+# Main script flow
+AMI_ID=$(get_ami_id)
+create_key_pair
+SECURITY_GROUP_ID=$(create_security_group)
+INSTANCE_ID=$(launch_instance "$AMI_ID" "$SECURITY_GROUP_ID")
+
+# Wait for instance to be running
+wait_for_instance "$INSTANCE_ID"
+
+# Get the public IP of the instance
+PUBLIC_IP=$(get_public_ip "$INSTANCE_ID")
+log "EC2 instance running at: http://$PUBLIC_IP"
+
+# Deploy Flask app
+deploy_flask "$PUBLIC_IP"
+
+log "Flask app running at http://$PUBLIC_IP"
+
+# Clean up AWS resources
+cleanup "$INSTANCE_ID" "$SECURITY_GROUP_ID"
+
+log "Script completed successfully."
