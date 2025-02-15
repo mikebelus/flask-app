@@ -9,6 +9,13 @@ delete_iam_role() {
     ROLE_NAME=$1
     echo "Attempting to delete IAM role: $ROLE_NAME"
     
+    # Check if the role is protected before modifying it
+    PROTECTED_CHECK=$(aws iam get-role --role-name $ROLE_NAME 2>&1)
+    if echo "$PROTECTED_CHECK" | grep -q "UnmodifiableEntity"; then
+        echo "Skipping protected IAM role: $ROLE_NAME (Cannot delete due to protection)"
+        return
+    fi
+
     # Detach any policies attached to the IAM role
     POLICY_ARNS=$(aws iam list-attached-role-policies --role-name $ROLE_NAME --query "AttachedPolicies[*].PolicyArn" --output text)
     for POLICY_ARN in $POLICY_ARNS; do
@@ -25,15 +32,12 @@ delete_iam_role() {
 
     # Now try to delete the IAM role
     DELETE_OUTPUT=$(aws iam delete-role --role-name $ROLE_NAME 2>&1)
-    if echo "$DELETE_OUTPUT" | grep -q "UnmodifiableEntity"; then
-        echo "Skipping protected IAM role: $ROLE_NAME (Cannot delete due to protection)"
-    elif echo "$DELETE_OUTPUT" | grep -q "DependentResource":; then
+    if echo "$DELETE_OUTPUT" | grep -q "DependentResource"; then
         echo "Skipping IAM role $ROLE_NAME because it is in use by dependent resources."
     else
         echo "IAM role $ROLE_NAME deleted."
     fi
 }
-
 
 # List all IAM roles and attempt to delete each
 echo "Deleting all IAM roles..."
@@ -41,7 +45,6 @@ ROLE_NAMES=$(aws iam list-roles --query "Roles[*].RoleName" --output text)
 for ROLE_NAME in $ROLE_NAMES; do
     delete_iam_role $ROLE_NAME
 done
-
 
 # Function to delete a VPC and its associated resources
 delete_vpc_resources() {
