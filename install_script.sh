@@ -123,8 +123,8 @@ ssh -i ${KEY_NAME}.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/nu
     # Start gunicorn in the background with nohup
     nohup gunicorn app:app --bind 0.0.0.0:5000 &
 
-    # Wait for all background jobs to finish
-    wait
+    # Exit SSH session immediately after running the command
+    exit
 
 EOF
 
