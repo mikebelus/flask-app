@@ -79,8 +79,8 @@ print_log "VPC ID being passed to create_security_group: $vpc_id"
 # Create or retrieve security group
 create_security_group() {
   local vpc_id=$1
-#  print_log "Checking for existing security group..."
-#  local group_id
+  print_log "Checking for existing security group..."
+  local group_id
 #  group_id=$(aws ec2 describe-security-groups --region "$AWS_REGION" \
 #    --filters "Name=vpc-id,Values=$vpc_id" "Name=group-name,Values=$SECURITY_GROUP_NAME" \
 #    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)
