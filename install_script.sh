@@ -30,7 +30,7 @@ print_log "Detected public IP: $YOUR_IP"
 # Create VPC
 create_vpc() {
   print_log "Creating a new VPC..."
-  local vpc_id
+  #global vpc_id
   vpc_id=$(aws ec2 create-vpc --region "$AWS_REGION" --cidr-block "10.0.0.0/16" \
     --query 'Vpc.VpcId' --output text) || { print_log "[ERROR] Failed to create VPC."; exit 1; }
 
