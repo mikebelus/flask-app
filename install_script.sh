@@ -32,7 +32,10 @@ create_vpc() {
   print_log "Creating a new VPC..."
   local vpc_id
   vpc_id=$(aws ec2 create-vpc --region "$AWS_REGION" --cidr-block "10.0.0.0/16" \
-    --query 'Vpc.VpcId' --output text | tr -d '\r' || { print_log "[ERROR] Failed to create VPC."; exit 1; })
+    --query 'Vpc.VpcId' --output text) || { print_log "[ERROR] Failed to create VPC."; exit 1; }
+
+  # Ensure VPC ID is clean and without any surrounding characters
+  vpc_id=$(echo "$vpc_id" | tr -d '"')
 
   print_log "VPC created successfully with ID: $vpc_id"
   echo "$vpc_id"
