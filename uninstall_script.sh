@@ -4,6 +4,34 @@ REGION="us-east-1"
 
 echo "Starting full AWS cleanup in region: $REGION"
 
+# Function to delete IAM roles
+delete_iam_roles() {
+    echo "Deleting all IAM roles..."
+    ROLE_LIST=$(aws iam list-roles --region $REGION --query 'Roles[*].RoleName' --output text)
+
+    if [ -z "$ROLE_LIST" ]; then
+        echo "No IAM roles found to delete."
+    else
+        for ROLE in $ROLE_LIST; do
+            echo "Attempting to delete IAM role: $ROLE"
+            # Try to delete the IAM role and handle errors
+            DELETION_OUTPUT=$(aws iam delete-role --region $REGION --role-name "$ROLE" 2>&1)
+            if echo "$DELETION_OUTPUT" | grep -q "UnmodifiableEntity"; then
+                echo "Skipping protected IAM role: $ROLE (Cannot delete due to protection)"
+            elif echo "$DELETION_OUTPUT" | grep -q "AccessDenied"; then
+                echo "Access denied while trying to delete IAM role: $ROLE (Skipping)"
+            elif echo "$DELETION_OUTPUT" | grep -q "NoSuchEntity"; then
+                echo "IAM role $ROLE does not exist or was already deleted (Skipping)"
+            else
+                echo "IAM role deleted: $ROLE"
+            fi
+        done
+    fi
+}
+
+# Call the IAM roles cleanup function
+delete_iam_roles
+
 # Function to delete a VPC and its associated resources
 delete_vpc_resources() {
     VPC_ID=$1
