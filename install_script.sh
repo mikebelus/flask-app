@@ -121,7 +121,7 @@ ssh -i ${KEY_NAME}.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/nu
     sudo pip3 install flask gunicorn
 
     # Start gunicorn in the background with nohup
-    nohup gunicorn app:app --bind 0.0.0.0:5000 &
+    nohup gunicorn app:app --bind 0.0.0.0:5000 > /dev/null 2>&1 &
 
     # Disown the process to make sure it doesn't block the SSH session
     disown
