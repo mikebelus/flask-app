@@ -71,6 +71,11 @@ create_key_pair() {
   fi
 }
 
+# Ensure that the VPC ID is correctly passed to the create_security_group function
+vpc_id=$(create_vpc)  # Assign the result of create_vpc to vpc_id
+
+print_log "VPC ID being passed to create_security_group: $vpc_id"
+
 # Create or retrieve security group
 create_security_group() {
   local vpc_id=$1
