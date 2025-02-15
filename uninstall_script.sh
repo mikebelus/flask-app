@@ -63,10 +63,20 @@ delete_vpc_resources() {
         aws ec2 delete-internet-gateway --region $REGION --internet-gateway-id $IGW_ID
     done
 
-    # Force delete all Route Tables (including default)
+    # Force delete Route Tables (including default ones)
     RT_IDS=$(aws ec2 describe-route-tables --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[*].RouteTableId" --output text)
     for RT_ID in $RT_IDS; do
         echo "Force deleting Route Table: $RT_ID"
+        # Disassociate all subnets from the route table
+        SUBNET_ASSOCIATIONS=$(aws ec2 describe-route-tables --region $REGION --route-table-id $RT_ID --query "RouteTables[*].Associations[?Main!=`true`].AssociationId" --output text)
+        if [[ -n "$SUBNET_ASSOCIATIONS" ]]; then
+            for ASSOC_ID in $SUBNET_ASSOCIATIONS; do
+                echo "Disassociating subnet from route table: $ASSOC_ID"
+                aws ec2 disassociate-route-table --region $REGION --association-id $ASSOC_ID
+            done
+        fi
+        # Delete the route table
+        echo "Deleting Route Table: $RT_ID"
         aws ec2 delete-route-table --region $REGION --route-table-id $RT_ID
     done
 
