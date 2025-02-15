@@ -107,13 +107,20 @@ fi
 # Securely copy the Flask app to EC2 (Suppress SSH host verification prompt)
 scp -i ${KEY_NAME}.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null flask-app.zip ec2-user@$PUBLIC_IP:/home/ec2-user/
 
-# Connect to the instance and set up Flask (Suppress SSH prompt)
-ssh -i ${KEY_NAME}.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ec2-user@$PUBLIC_IP <<EOF
-  unzip flask-app.zip
-  cd flask-app
-  sudo yum install -y python3 python3-pip
-  sudo pip3 install flask gunicorn
-  nohup gunicorn app:app --bind 0.0.0.0:5000 &
+ssh -i ${KEY_NAME}.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ec2-user@$PUBLIC_IP << EOF
+    # Unzip the Flask app
+    unzip flask-app.zip
+    cd flask-app
+
+    # Install python3 and pip, avoiding any prompts
+    sudo yum install -y python3 python3-pip
+
+    # Install Flask and Gunicorn in the background to avoid blocking
+    sudo nohup pip3 install flask gunicorn > install.log 2>&1 &
+
+    # Start gunicorn in the background with nohup
+    nohup gunicorn app:app --bind 0.0.0.0:5000 &
+
 EOF
 
 log "Flask app setup completed on EC2 instance."
