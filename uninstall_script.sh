@@ -96,21 +96,43 @@ delete_vpc_resources() {
     done
 
     # Force delete Route Tables (including default ones)
-    RT_IDS=$(aws ec2 describe-route-tables --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[*].RouteTableId" --output text)
-    for RT_ID in $RT_IDS; do
-        echo "Force deleting Route Table: $RT_ID"
-        # Disassociate all subnets from the route table
-        SUBNET_ASSOCIATIONS=$(aws ec2 describe-route-tables --region $REGION --route-table-id $RT_ID --query "RouteTables[*].Associations[?Main!=\`true\`].AssociationId" --output text)
-        if [[ -n "$SUBNET_ASSOCIATIONS" ]]; then
-            for ASSOC_ID in $SUBNET_ASSOCIATIONS; do
-                echo "Disassociating subnet from route table: $ASSOC_ID"
-                aws ec2 disassociate-route-table --region $REGION --association-id $ASSOC_ID
-            done
-        fi
-        # Delete the route table
-        echo "Deleting Route Table: $RT_ID"
-        aws ec2 delete-route-table --region $REGION --route-table-id $RT_ID
-    done
+    delete_route_tables() {
+        echo "Checking and force deleting Route Tables..."
+        RT_IDS=$(aws ec2 describe-route-tables --region $REGION --query "RouteTables[*].RouteTableId" --output text)
+
+        for RT_ID in $RT_IDS; do
+            # Attempt to force delete route table
+            echo "Attempting to delete Route Table: $RT_ID"
+            DELETION_OUTPUT=$(aws ec2 delete-route-table --region $REGION --route-table-id $RT_ID 2>&1)
+        
+            if echo "$DELETION_OUTPUT" | grep -q "DependencyViolation"; then
+                # Skip printing the error message about dependencies
+                echo "Route Table $RT_ID has dependencies and cannot be deleted right now (force delete later)"
+            else
+                echo "$DELETION_OUTPUT"  # Print the output if there are no errors
+            fi
+        done
+
+        # Force delete route tables later (after disassociating subnets if necessary)
+        for RT_ID in $RT_IDS; do
+            echo "Force deleting Route Table: $RT_ID"
+            SUBNET_ASSOCIATIONS=$(aws ec2 describe-route-tables --region $REGION --route-table-id $RT_ID --query "RouteTables[*].Associations[?Main!=\`true\`].AssociationId" --output text)
+        
+            if [[ -n "$SUBNET_ASSOCIATIONS" ]]; then
+                for ASSOC_ID in $SUBNET_ASSOCIATIONS; do
+                    echo "Disassociating subnet from route table: $ASSOC_ID"
+                    aws ec2 disassociate-route-table --region $REGION --association-id $ASSOC_ID
+                done
+            fi
+        
+            # Retry the deletion to force the route table removal
+            aws ec2 delete-route-table --region $REGION --route-table-id $RT_ID
+            echo "Route Table $RT_ID deleted."
+        done
+    }
+
+    # Call the route table cleanup function
+    delete_route_tables
 
     # Delete NAT Gateways
     NAT_GW_IDS=$(aws ec2 describe-nat-gateways --region $REGION --filter "Name=vpc-id,Values=$VPC_ID" --query "NatGateways[*].NatGatewayId" --output text)
