@@ -14,7 +14,11 @@ delete_vpc_resources() {
     if [[ -n "$INSTANCE_IDS" ]]; then
         echo "Terminating EC2 instances: $INSTANCE_IDS"
         aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_IDS
-        sleep 10  # Allow instances to terminate
+        
+        # Wait for EC2 instances to terminate
+        echo "Waiting for EC2 instances to terminate..."
+        aws ec2 wait instance-terminated --region $REGION --instance-ids $INSTANCE_IDS
+        echo "EC2 instances terminated."
     fi
 
     # Detach and delete Security Groups (except default)
@@ -129,7 +133,11 @@ INSTANCE_IDS=$(aws ec2 describe-instances --region $REGION --query "Reservations
 if [[ -n "$INSTANCE_IDS" ]]; then
     echo "Terminating EC2 instances: $INSTANCE_IDS"
     aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_IDS
-    sleep 10
+    
+    # Wait for EC2 instances to terminate
+    echo "Waiting for EC2 instances to terminate..."
+    aws ec2 wait instance-terminated --region $REGION --instance-ids $INSTANCE_IDS
+    echo "EC2 instances terminated."
 fi
 
 # Delete Key Pairs
