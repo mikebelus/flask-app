@@ -17,9 +17,24 @@ delete_vpc_resources() {
         sleep 10  # Allow instances to terminate
     fi
 
-    # Delete Security Groups (except default)
+    # Detach and delete Security Groups (except default)
     SG_IDS=$(aws ec2 describe-security-groups --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[?GroupName!='default'].GroupId" --output text)
     for SG_ID in $SG_IDS; do
+        # Check if security group is in use by any resource
+        ENI_IDS=$(aws ec2 describe-network-interfaces --region $REGION --filters "Name=group-id,Values=$SG_ID" --query "NetworkInterfaces[*].NetworkInterfaceId" --output text)
+        if [[ -n "$ENI_IDS" ]]; then
+            echo "Detaching security group from ENIs: $ENI_IDS"
+            aws ec2 modify-network-interface-attribute --region $REGION --network-interface-id $ENI_IDS --no-groups
+        fi
+
+        # Detach security group from Load Balancers
+        LB_IDS=$(aws elb describe-load-balancers --region $REGION --query "LoadBalancerDescriptions[?SecurityGroups=='$SG_ID'].LoadBalancerName" --output text)
+        if [[ -n "$LB_IDS" ]]; then
+            echo "Detaching security group from Load Balancers: $LB_IDS"
+            aws elb modify-load-balancer-attributes --region $REGION --load-balancer-name $LB_IDS --security-groups ""
+        fi
+
+        # Now delete security group
         echo "Deleting Security Group: $SG_ID"
         aws ec2 delete-security-group --region $REGION --group-id $SG_ID
     done
