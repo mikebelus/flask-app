@@ -20,21 +20,23 @@ delete_vpc_resources() {
     # Detach and delete Security Groups (except default)
     SG_IDS=$(aws ec2 describe-security-groups --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "SecurityGroups[?GroupName!='default'].GroupId" --output text)
     for SG_ID in $SG_IDS; do
-        # Check if security group is in use by any resource
+        echo "Detaching security group from resources: $SG_ID"
+
+        # Detach from EC2 instances and ENIs
         ENI_IDS=$(aws ec2 describe-network-interfaces --region $REGION --filters "Name=group-id,Values=$SG_ID" --query "NetworkInterfaces[*].NetworkInterfaceId" --output text)
         if [[ -n "$ENI_IDS" ]]; then
             echo "Detaching security group from ENIs: $ENI_IDS"
             aws ec2 modify-network-interface-attribute --region $REGION --network-interface-id $ENI_IDS --no-groups
         fi
 
-        # Detach security group from Load Balancers
+        # Detach from Load Balancers
         LB_IDS=$(aws elb describe-load-balancers --region $REGION --query "LoadBalancerDescriptions[?SecurityGroups=='$SG_ID'].LoadBalancerName" --output text)
         if [[ -n "$LB_IDS" ]]; then
             echo "Detaching security group from Load Balancers: $LB_IDS"
             aws elb modify-load-balancer-attributes --region $REGION --load-balancer-name $LB_IDS --security-groups ""
         fi
 
-        # Now delete security group
+        # Delete the security group after detachment
         echo "Deleting Security Group: $SG_ID"
         aws ec2 delete-security-group --region $REGION --group-id $SG_ID
     done
@@ -46,15 +48,14 @@ delete_vpc_resources() {
         aws ec2 delete-subnet --region $REGION --subnet-id $SUBNET_ID
     done
 
-    # Delete NAT Gateways
-    NAT_GW_IDS=$(aws ec2 describe-nat-gateways --region $REGION --filter "Name=vpc-id,Values=$VPC_ID" --query "NatGateways[*].NatGatewayId" --output text)
-    for NAT_GW_ID in $NAT_GW_IDS; do
-        echo "Deleting NAT Gateway: $NAT_GW_ID"
-        aws ec2 delete-nat-gateway --region $REGION --nat-gateway-id $NAT_GW_ID
-        sleep 10  # Allow deletion to process
+    # Release Elastic IPs
+    EIP_ALLOC_IDS=$(aws ec2 describe-addresses --region $REGION --filters "Name=domain,Values=vpc" --query "Addresses[*].AllocationId" --output text)
+    for EIP_ALLOC_ID in $EIP_ALLOC_IDS; do
+        echo "Releasing Elastic IP: $EIP_ALLOC_ID"
+        aws ec2 release-address --region $REGION --allocation-id $EIP_ALLOC_ID
     done
 
-    # Delete Internet Gateways
+    # Detach and delete Internet Gateways
     IGW_IDS=$(aws ec2 describe-internet-gateways --region $REGION --filters "Name=attachment.vpc-id,Values=$VPC_ID" --query "InternetGateways[*].InternetGatewayId" --output text)
     for IGW_ID in $IGW_IDS; do
         echo "Detaching and deleting Internet Gateway: $IGW_ID"
@@ -67,6 +68,21 @@ delete_vpc_resources() {
     for RT_ID in $RT_IDS; do
         echo "Deleting Route Table: $RT_ID"
         aws ec2 delete-route-table --region $REGION --route-table-id $RT_ID
+    done
+
+    # Delete NAT Gateways
+    NAT_GW_IDS=$(aws ec2 describe-nat-gateways --region $REGION --filter "Name=vpc-id,Values=$VPC_ID" --query "NatGateways[*].NatGatewayId" --output text)
+    for NAT_GW_ID in $NAT_GW_IDS; do
+        echo "Deleting NAT Gateway: $NAT_GW_ID"
+        aws ec2 delete-nat-gateway --region $REGION --nat-gateway-id $NAT_GW_ID
+        sleep 10  # Allow deletion to process
+    done
+
+    # Delete Network Interfaces (ENIs)
+    ENI_IDS=$(aws ec2 describe-network-interfaces --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "NetworkInterfaces[*].NetworkInterfaceId" --output text)
+    for ENI_ID in $ENI_IDS; do
+        echo "Deleting Network Interface: $ENI_ID"
+        aws ec2 delete-network-interface --region $REGION --network-interface-id $ENI_ID
     done
 
     # Delete the VPC
@@ -159,11 +175,6 @@ git push origin main
 # Check for files not tracked in Git
 echo "==== Local files not in either repository ===="
 untracked_files=$(git ls-files --others --exclude-standard)
-if [[ -z "$untracked_files" ]]; then
-    echo "No untracked local files found."
-else
-    echo "$untracked_files"
-fi
-echo "================================"
+echo "$untracked_files"
 
-echo "AWS cleanup complete!"
+echo "Full cleanup completed."
