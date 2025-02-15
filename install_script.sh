@@ -50,6 +50,7 @@ create_key_pair() {
     aws ec2 create-key-pair --region "$AWS_REGION" --key-name "$KEY_PAIR_NAME" \
       --query 'KeyMaterial' --output text > "$KEY_PAIR_NAME.pem" || { log "[ERROR] Failed to create key pair."; exit 1; }
     chmod 400 "$KEY_PAIR_NAME.pem"
+    log "Key pair created successfully."
   fi
 }
 
@@ -62,11 +63,16 @@ create_security_group() {
 
   if [[ -z "$group_id" ]]; then
     log "No existing security group found. Fetching default VPC..."
+
+    # Fetch default VPC ID
     local vpc_id
     vpc_id=$(aws ec2 describe-vpcs --region "$AWS_REGION" --filters "Name=isDefault,Values=true" \
       --query "Vpcs[0].VpcId" --output text)
 
-    if [[ -z "$vpc_id" ]]; then
+    # Debugging step: Log the vpc_id to see if it's being retrieved correctly
+    log "Default VPC ID: $vpc_id"
+
+    if [[ -z "$vpc_id" || "$vpc_id" == "None" ]]; then
       log "[ERROR] No default VPC found in the region $AWS_REGION."
       exit 1
     fi
@@ -85,6 +91,12 @@ create_security_group() {
 
   echo "$group_id"
 }
+
+log "Starting the EC2 instance setup process."
+create_key_pair
+log "Key pair creation process complete."
+SECURITY_GROUP_ID=$(create_security_group)
+log "Security group setup complete."
 
 # Launch EC2 instance
 launch_instance() {
