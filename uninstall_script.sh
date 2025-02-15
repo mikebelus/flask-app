@@ -85,8 +85,15 @@ delete_vpc_resources() {
         aws ec2 delete-network-interface --region $REGION --network-interface-id $ENI_ID
     done
 
-    # Delete the VPC
-    echo "Deleting VPC: $VPC_ID"
+    # Delete VPC Peering Connections (if any)
+    PEER_IDS=$(aws ec2 describe-vpc-peering-connections --region $REGION --filters "Name=requester-vpc-info.vpc-id,Values=$VPC_ID" --query "VpcPeeringConnections[*].VpcPeeringConnectionId" --output text)
+    for PEER_ID in $PEER_IDS; do
+        echo "Deleting VPC Peering Connection: $PEER_ID"
+        aws ec2 delete-vpc-peering-connection --region $REGION --vpc-peering-connection-id $PEER_ID
+    done
+
+    # Try deleting the VPC
+    echo "Attempting to delete VPC: $VPC_ID"
     aws ec2 delete-vpc --region $REGION --vpc-id $VPC_ID
 }
 
