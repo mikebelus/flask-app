@@ -4,33 +4,44 @@ REGION="us-east-1"
 
 echo "Starting full AWS cleanup in region: $REGION"
 
-# Function to delete IAM roles
-delete_iam_roles() {
-    echo "Deleting all IAM roles..."
-    ROLE_LIST=$(aws iam list-roles --region $REGION --query 'Roles[*].RoleName' --output text)
+# Function to delete IAM role, checking for dependencies
+delete_iam_role() {
+    ROLE_NAME=$1
+    echo "Attempting to delete IAM role: $ROLE_NAME"
+    
+    # Detach any policies attached to the IAM role
+    POLICY_ARNS=$(aws iam list-attached-role-policies --role-name $ROLE_NAME --query "AttachedPolicies[*].PolicyArn" --output text)
+    for POLICY_ARN in $POLICY_ARNS; do
+        echo "Detaching policy $POLICY_ARN from IAM role $ROLE_NAME"
+        aws iam detach-role-policy --role-name $ROLE_NAME --policy-arn $POLICY_ARN
+    done
 
-    if [ -z "$ROLE_LIST" ]; then
-        echo "No IAM roles found to delete."
+    # Detach any instance profiles associated with the role
+    INSTANCE_PROFILE_NAME=$(aws iam list-instance-profiles-for-role --role-name $ROLE_NAME --query "InstanceProfiles[*].InstanceProfileName" --output text)
+    if [[ -n "$INSTANCE_PROFILE_NAME" ]]; then
+        echo "Removing instance profile: $INSTANCE_PROFILE_NAME from IAM role $ROLE_NAME"
+        aws iam remove-role-from-instance-profile --instance-profile-name "$INSTANCE_PROFILE_NAME" --role-name "$ROLE_NAME"
+    fi
+
+    # Now try to delete the IAM role
+    DELETE_OUTPUT=$(aws iam delete-role --role-name $ROLE_NAME 2>&1)
+    if echo "$DELETE_OUTPUT" | grep -q "UnmodifiableEntity"; then
+        echo "Skipping protected IAM role: $ROLE_NAME (Cannot delete due to protection)"
+    elif echo "$DELETE_OUTPUT" | grep -q "DependentResource":; then
+        echo "Skipping IAM role $ROLE_NAME because it is in use by dependent resources."
     else
-        for ROLE in $ROLE_LIST; do
-            echo "Attempting to delete IAM role: $ROLE"
-            # Try to delete the IAM role and handle errors
-            DELETION_OUTPUT=$(aws iam delete-role --region $REGION --role-name "$ROLE" 2>&1)
-            if echo "$DELETION_OUTPUT" | grep -q "UnmodifiableEntity"; then
-                echo "Skipping protected IAM role: $ROLE (Cannot delete due to protection)"
-            elif echo "$DELETION_OUTPUT" | grep -q "AccessDenied"; then
-                echo "Access denied while trying to delete IAM role: $ROLE (Skipping)"
-            elif echo "$DELETION_OUTPUT" | grep -q "NoSuchEntity"; then
-                echo "IAM role $ROLE does not exist or was already deleted (Skipping)"
-            else
-                echo "IAM role deleted: $ROLE"
-            fi
-        done
+        echo "IAM role $ROLE_NAME deleted."
     fi
 }
 
-# Call the IAM roles cleanup function
-delete_iam_roles
+
+# List all IAM roles and attempt to delete each
+echo "Deleting all IAM roles..."
+ROLE_NAMES=$(aws iam list-roles --query "Roles[*].RoleName" --output text)
+for ROLE_NAME in $ROLE_NAMES; do
+    delete_iam_role $ROLE_NAME
+done
+
 
 # Function to delete a VPC and its associated resources
 delete_vpc_resources() {
