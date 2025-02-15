@@ -63,20 +63,12 @@ delete_vpc_resources() {
         aws ec2 delete-internet-gateway --region $REGION --internet-gateway-id $IGW_ID
     done
 
-    # Delete Route Tables (EXCEPT main/default)
-    RT_IDS=$(aws ec2 describe-route-tables --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[?Associations[0].Main==\`false\`].RouteTableId" --output text)
+    # Force delete all Route Tables (including default)
+    RT_IDS=$(aws ec2 describe-route-tables --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[*].RouteTableId" --output text)
     for RT_ID in $RT_IDS; do
-        echo "Deleting Route Table: $RT_ID"
+        echo "Force deleting Route Table: $RT_ID"
         aws ec2 delete-route-table --region $REGION --route-table-id $RT_ID
     done
-
-    # Additional check: explicitly delete the default route table if necessary (optional step, but be cautious)
-    DEFAULT_RT_ID=$(aws ec2 describe-route-tables --region $REGION --filters "Name=vpc-id,Values=$VPC_ID" --query "RouteTables[?Associations[0].Main==\`true\`].RouteTableId" --output text)
-    if [[ -n "$DEFAULT_RT_ID" ]]; then
-        echo "Skipping default route table: $DEFAULT_RT_ID"
-    else
-        echo "No default route table found for VPC: $VPC_ID"
-    fi
 
     # Delete NAT Gateways
     NAT_GW_IDS=$(aws ec2 describe-nat-gateways --region $REGION --filter "Name=vpc-id,Values=$VPC_ID" --query "NatGateways[*].NatGatewayId" --output text)
