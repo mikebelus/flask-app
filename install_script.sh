@@ -8,19 +8,28 @@ SECURITY_GROUP_NAME="flask-security-group"
 INSTANCE_TYPE="t2.micro"
 IAM_ROLE=""  # Set to an IAM role if needed
 REPOSITORY_URL="https://github.com/mikebelus/flask-app.git"
-
-# Dynamically fetch your public IP address
-YOUR_IP=$(curl -s https://ipinfo.io/ip)/32
+YOUR_IP="YOUR_IP/32"  # !!! REPLACE WITH YOUR ACTUAL IP !!!
 
 # Ensure YOUR_IP is set correctly
-if [[ -z "$YOUR_IP" || "$YOUR_IP" == "/32" ]]; then
-  echo "[ERROR] Failed to fetch your public IP address."
+if [[ "$YOUR_IP" == "YOUR_IP/32" ]]; then
+  echo "[ERROR] Please replace YOUR_IP with your actual IP address in the script."
   exit 1
 fi
 
 # Log function for standardized logging
 log() {
   echo "[INFO] $(date +'%Y-%m-%d %H:%M:%S') - $1"
+}
+
+# Create VPC
+create_vpc() {
+  log "Creating a new VPC..."
+  local vpc_id
+  vpc_id=$(aws ec2 create-vpc --region "$AWS_REGION" --cidr-block "10.0.0.0/16" \
+    --query 'Vpc.VpcId' --output text) || { log "[ERROR] Failed to create VPC."; exit 1; }
+
+  log "VPC created successfully with ID: $vpc_id"
+  echo "$vpc_id"
 }
 
 # Fetch latest Amazon Linux 2 AMI ID
@@ -50,33 +59,19 @@ create_key_pair() {
     aws ec2 create-key-pair --region "$AWS_REGION" --key-name "$KEY_PAIR_NAME" \
       --query 'KeyMaterial' --output text > "$KEY_PAIR_NAME.pem" || { log "[ERROR] Failed to create key pair."; exit 1; }
     chmod 400 "$KEY_PAIR_NAME.pem"
-    log "Key pair created successfully."
   fi
 }
 
 # Create or retrieve security group
 create_security_group() {
+  local vpc_id=$1
   log "Checking for existing security group..."
   local group_id
   group_id=$(aws ec2 describe-security-groups --region "$AWS_REGION" \
-    --group-names "$SECURITY_GROUP_NAME" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)
+    --filters "Name=vpc-id,Values=$vpc_id" "Name=group-name,Values=$SECURITY_GROUP_NAME" \
+    --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)
 
   if [[ -z "$group_id" ]]; then
-    log "No existing security group found. Fetching default VPC..."
-
-    # Fetch default VPC ID
-    local vpc_id
-    vpc_id=$(aws ec2 describe-vpcs --region "$AWS_REGION" --filters "Name=isDefault,Values=true" \
-      --query "Vpcs[0].VpcId" --output text)
-
-    # Debugging step: Log the vpc_id to see if it's being retrieved correctly
-    log "Default VPC ID: $vpc_id"
-
-    if [[ -z "$vpc_id" || "$vpc_id" == "None" ]]; then
-      log "[ERROR] No default VPC found in the region $AWS_REGION."
-      exit 1
-    fi
-
     log "Creating security group '$SECURITY_GROUP_NAME' in VPC $vpc_id..."
     group_id=$(aws ec2 create-security-group --region "$AWS_REGION" \
       --group-name "$SECURITY_GROUP_NAME" --description "Flask security group" \
@@ -91,12 +86,6 @@ create_security_group() {
 
   echo "$group_id"
 }
-
-log "Starting the EC2 instance setup process."
-create_key_pair
-log "Key pair creation process complete."
-SECURITY_GROUP_ID=$(create_security_group)
-log "Security group setup complete."
 
 # Launch EC2 instance
 launch_instance() {
@@ -186,6 +175,7 @@ EOF
 cleanup() {
   local instance_id=$1
   local security_group_id=$2
+  local vpc_id=$3
 
   log "Terminating EC2 instance $instance_id..."
   aws ec2 terminate-instances --region "$AWS_REGION" --instance-ids "$instance_id"
@@ -203,12 +193,16 @@ cleanup() {
   else
     log "Security group is still in use, skipping deletion."
   fi
+
+  log "Deleting VPC..."
+  aws ec2 delete-vpc --region "$AWS_REGION" --vpc-id "$vpc_id" || log "VPC in use, skipping deletion."
 }
 
 # Main script flow
+VPC_ID=$(create_vpc)
 AMI_ID=$(get_ami_id)
 create_key_pair
-SECURITY_GROUP_ID=$(create_security_group)
+SECURITY_GROUP_ID=$(create_security_group "$VPC_ID")
 INSTANCE_ID=$(launch_instance "$AMI_ID" "$SECURITY_GROUP_ID")
 
 # Wait for instance to be running
@@ -224,6 +218,6 @@ deploy_flask "$PUBLIC_IP"
 log "Flask app running at http://$PUBLIC_IP"
 
 # Clean up AWS resources
-cleanup "$INSTANCE_ID" "$SECURITY_GROUP_ID"
+cleanup "$INSTANCE_ID" "$SECURITY_GROUP_ID" "$VPC_ID"
 
 log "Script completed successfully."
