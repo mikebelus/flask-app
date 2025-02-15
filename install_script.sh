@@ -93,14 +93,15 @@ log "Public IP of EC2 instance: $PUBLIC_IP"
 # 14. Set up Flask app on EC2 instance
 log "Setting up Flask app on EC2..."
 
+log "Creating flask-app.zip..."
+zip -r flask-app.zip flask-app/
+
 # Ensure flask-app.zip exists before attempting to copy
 if [ ! -f flask-app.zip ]; then
   log "Error: flask-app.zip not found! Ensure the file is present before running this script."
   exit 1
 fi
 
-log "Creating flask-app.zip..."
-zip -r flask-app.zip flask-app/
 
 # Securely copy the Flask app to EC2 (Suppress SSH host verification prompt)
 scp -i ${KEY_NAME}.pem -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null flask-app.zip ec2-user@$PUBLIC_IP:/home/ec2-user/
