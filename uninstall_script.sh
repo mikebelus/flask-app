@@ -4,6 +4,30 @@ REGION="us-east-1"
 
 echo "Starting full AWS cleanup in region: $REGION"
 
+# Function to delete all instance profiles
+delete_instance_profiles() {
+    echo "Deleting all instance profiles..."
+    INSTANCE_PROFILES=$(aws iam list-instance-profiles --query "InstanceProfiles[*].InstanceProfileName" --output text)
+
+    for INSTANCE_PROFILE in $INSTANCE_PROFILES; do
+        echo "Processing instance profile: $INSTANCE_PROFILE"
+
+        # Get associated roles
+        ROLES=$(aws iam get-instance-profile --instance-profile-name "$INSTANCE_PROFILE" --query "InstanceProfile.Roles[*].RoleName" --output text)
+        for ROLE in $ROLES; do
+            echo "Removing role $ROLE from instance profile: $INSTANCE_PROFILE"
+            aws iam remove-role-from-instance-profile --instance-profile-name "$INSTANCE_PROFILE" --role-name "$ROLE"
+        done
+
+        # Delete the instance profile
+        aws iam delete-instance-profile --instance-profile-name "$INSTANCE_PROFILE"
+        echo "Instance profile deleted: $INSTANCE_PROFILE"
+    done
+}
+
+# Call the function to remove instance profiles before deleting roles
+delete_instance_profiles
+
 # Function to delete IAM role, checking for dependencies
 delete_iam_role() {
     ROLE_NAME=$1
