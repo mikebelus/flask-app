@@ -8,7 +8,7 @@ echo "Starting full AWS cleanup in region: $REGION"
 delete_iam_role() {
     ROLE_NAME=$1
     echo "Attempting to delete IAM role: $ROLE_NAME"
-    
+
     # Check if the role is protected before modifying it
     PROTECTED_CHECK=$(aws iam get-role --role-name $ROLE_NAME 2>&1)
     if echo "$PROTECTED_CHECK" | grep -q "UnmodifiableEntity"; then
@@ -20,7 +20,11 @@ delete_iam_role() {
     POLICY_ARNS=$(aws iam list-attached-role-policies --role-name $ROLE_NAME --query "AttachedPolicies[*].PolicyArn" --output text)
     for POLICY_ARN in $POLICY_ARNS; do
         echo "Detaching policy $POLICY_ARN from IAM role $ROLE_NAME"
-        aws iam detach-role-policy --role-name $ROLE_NAME --policy-arn $POLICY_ARN
+        DETACH_OUTPUT=$(aws iam detach-role-policy --role-name $ROLE_NAME --policy-arn $POLICY_ARN 2>&1)
+        if echo "$DETACH_OUTPUT" | grep -q "UnmodifiableEntity"; then
+            echo "Skipping policy detachment for protected IAM role: $ROLE_NAME"
+            return
+        fi
     done
 
     # Detach any instance profiles associated with the role
@@ -32,7 +36,9 @@ delete_iam_role() {
 
     # Now try to delete the IAM role
     DELETE_OUTPUT=$(aws iam delete-role --role-name $ROLE_NAME 2>&1)
-    if echo "$DELETE_OUTPUT" | grep -q "DependentResource"; then
+    if echo "$DELETE_OUTPUT" | grep -q "UnmodifiableEntity"; then
+        echo "Skipping protected IAM role: $ROLE_NAME (Cannot delete due to protection)"
+    elif echo "$DELETE_OUTPUT" | grep -q "DependentResource"; then
         echo "Skipping IAM role $ROLE_NAME because it is in use by dependent resources."
     else
         echo "IAM role $ROLE_NAME deleted."
