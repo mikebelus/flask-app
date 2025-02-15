@@ -87,9 +87,9 @@ create_security_group() {
 
   if [[ -z "$group_id" ]]; then
     print_log "Creating security group '$SECURITY_GROUP_NAME' in VPC $vpc_id..."
-#    group_id=$(aws ec2 create-security-group --region "$AWS_REGION" \
-#      --group-name "$SECURITY_GROUP_NAME" --description "Flask security group" \
-#      --vpc-id "$vpc_id" --query 'GroupId' --output text) || { print_log "[ERROR] Failed to create security group."; exit 1; }
+    group_id=$(aws ec2 create-security-group --region "$AWS_REGION" \
+      --group-name "$SECURITY_GROUP_NAME" --description "Flask security group" \
+      --vpc-id "$vpc_id" --query 'GroupId' --output text) || { print_log "[ERROR] Failed to create security group."; exit 1; }
 
 #    print_log "Configuring security group rules..."
 #    aws ec2 authorize-security-group-ingress --region "$AWS_REGION" --group-id "$group_id" --protocol tcp --port 22 --cidr "$YOUR_IP" || { print_log "[ERROR] Failed to configure SSH access."; exit 1; }
